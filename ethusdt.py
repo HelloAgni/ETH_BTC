@@ -1,3 +1,8 @@
+"""
+Correlation analysis: a technique that allows you to determine
+the degree of relationship between two variables.
+ETHUSDT - BTCUSDT
+"""
 import asyncio
 import logging
 import statistics
@@ -218,7 +223,14 @@ async def main():
 
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(main())
-    loop.close()
+    # loop = asyncio.get_event_loop()
+    # loop.run_until_complete(main())
+    # loop.close()
+
+    if sys.platform == 'win32':  # Checking OS, if Windows use asyncio Fix
+        asyncio.set_event_loop_policy(
+            asyncio.WindowsSelectorEventLoopPolicy()
+        )
+    asyncio.run(main())
+
     logging.info('---The End---\n')
