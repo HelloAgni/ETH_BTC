@@ -8,16 +8,23 @@ CORRELATION = 0.6  # for example 0.6; Usual correlation ~ 0.98
 SLEEP_1HOUR = 3600  # 60 minutes
 SLEEP_1MINUTE = 60  # 1 minute
 SLEEP_15SECONDS = 15
+ETH = 'ETHUSDT'
+BTC = 'BTCUSDT'
+PERIOD_HOUR = 'hour'
+PERIOD_MINUTE = 'minute'
+PERIOD_START = 'script_launch'
+DETECTED = 'Price movement detected'
 
 
-async def check_corel(eth, btc):
+async def check_corel(eth, btc, period=None):
     """
     Analyzing the start_current_price.
     """
-    corel = statistics.correlation(eth, btc)
-    print('Correlation: ', corel)
-    print('Own price movement')
+    corel = round(statistics.correlation(eth, btc), 3)
+    print(f'Analyzing {ETH} corellation is: '
+          f'{corel} for last {period}')
     if corel <= CORRELATION:  # 0.6
+        print(DETECTED)
         return True
     return False
 
@@ -27,43 +34,36 @@ async def start_current_price(client: AsyncClient):
     Current price change since script launch.
     The script start price and the current price are used.
     """
-    g = await client.get_symbol_ticker(symbol='ETHUSDT')
+    g = await client.get_symbol_ticker(symbol=ETH)
     start_price_eth = float(g.get("price"))
-    print("start price:", start_price_eth)
-    # start price: 1912.35
-    bt = await client.get_symbol_ticker(symbol='BTCUSDT')
+    bt = await client.get_symbol_ticker(symbol=BTC)
     start_price_bt = float(bt.get("price"))
     while True:
-        g = await client.get_symbol_ticker(symbol='ETHUSDT')
-        print(f'Ticker: {g.get("symbol")} current price: {float(g.get("price"))}')
-        # Ticker: ETHUSDT current price: 1912.35
+        g = await client.get_symbol_ticker(symbol=ETH)
 
         curent_price_eth = float(g.get("price"))
+        print(f'Ticker: {g.get("symbol")} '
+              f'current price: {float(g.get("price"))}')
         eth_start_end = [start_price_eth, curent_price_eth]
-        print('list eth: ', eth_start_end)
-        # list eth:  [1912.35, 1912.35]
-
-        change_percent = round(((curent_price_eth - start_price_eth) / start_price_eth) * 100, 2)
-        print("change percent since script launch:", change_percent)
-        # change percent since script launch: -0.05
-
-        bt = await client.get_symbol_ticker(symbol='BTCUSDT')
-        print(f'Ticker: {bt.get("symbol")} current price: {float(bt.get("price"))}')
-        # Ticker: BTCUSDT current price: 28498.0
+        change_percent = round(
+            ((curent_price_eth - start_price_eth) / start_price_eth) * 100, 2
+            )
+        bt = await client.get_symbol_ticker(symbol=BTC)
         curent_price_bt = float(bt.get("price"))
         btc_start_end = [start_price_bt, curent_price_bt]
-        print('list btc: ', btc_start_end)
-        # list btc:  [28510.12, 28498.0]
-
         if change_percent <= -1 or change_percent >= 1:
             print(f'ETHUSD change percent is: {change_percent}')
-            result = await check_corel(eth=eth_start_end, btc=btc_start_end)
+            result = await check_corel(
+                eth=eth_start_end,
+                btc=btc_start_end,
+                period=PERIOD_START
+                )
             if result:
-                print('Own price movement')
+                print(DETECTED)
         await asyncio.sleep(SLEEP_15SECONDS)
 
 
-async def percent_and_corel(eth, btc):
+async def percent_and_corel(eth, btc, period: str):
     """
     Analyzing the price change in percentages
     Analyzing the correlation.
@@ -71,22 +71,21 @@ async def percent_and_corel(eth, btc):
     """
     open_price = eth[0]
     close_price = eth[-1]
-    change_percent = ((close_price - open_price) / open_price) * 100
-
-    print('change percent:', change_percent)
-
-    ss = statistics.correlation(eth, btc)
-    print('current corel: ', ss)
+    change_percent = round(
+        ((close_price - open_price) / open_price) * 100, 2
+        )
+    print(f'Analyzing {ETH} change percent is: '
+          f'{change_percent} for last {period}')
     if change_percent <= -1 or change_percent >= 1:
         corel = statistics.correlation(btc, eth)
         print('Correlation: ', corel)
-        print('Own price movement')
         if corel <= CORRELATION:  # 0.6
+            print('Own price movement!')
             return True
     return False
 
 
-async def correlation_1hour(client: AsyncClient):
+async def analyzing_correlation_1hour(client: AsyncClient):
     """
     Analyzing the price change for the previous hour.
     Using the minimum and maximum values.
@@ -98,35 +97,69 @@ async def correlation_1hour(client: AsyncClient):
         )
     while True:
         btc = await client.get_historical_klines(
-            'BTCUSDT',
-            client.KLINE_INTERVAL_30MINUTE,
+            symbol=BTC,
+            interval=client.KLINE_INTERVAL_3MINUTE,
             start_str=cur_serv_time.strftime('%Y-%m-%d %H:%M:%S')
             )
-        mini_maxi_btc = [float(elem) for elem in btc[0][2:4]]
-        # print(mini_maxi_btc)
-        # [28225.15, 28210.7]
-
+        full_price_list_btc = [
+            elem for inner in btc for elem in map(float, inner[1:5:3])]
         eth = await client.get_historical_klines(
-            'ETHUSDT',
-            client.KLINE_INTERVAL_30MINUTE,
+            symbol=ETH,
+            interval=client.KLINE_INTERVAL_3MINUTE,
             start_str=cur_serv_time.strftime('%Y-%m-%d %H:%M:%S')
             )
-        mini_maxi_eth = [float(elem) for elem in eth[0][2:4]]
-        # print(mini_maxi_eth)
-        # [1914.24, 1911.1]
-        
-        result = await percent_and_corel(
-            eth=mini_maxi_eth,
-            btc=mini_maxi_btc
+        full_price_list_eth = [
+            elem for inner in eth for elem in map(float, inner[1:5:3])]
+        # print('FULL BTC', full_price_list_btc)
+        # print('FULL ETH', full_price_list_eth)
+        # FULL BTC [28481.39, 28476.21, 28476.21, 28485.98, 28485.98, 28490.82.....
+        # FULL BTC [1909.56, 1909.42, 1909.42, 1909.4, 1909.4, 1909.95.....
+        result = await check_corel(
+            eth=full_price_list_eth,
+            btc=full_price_list_btc,
+            # period=PERIOD_HOUR
             )
         if result:
-            print('price changed more than 1%')
-     
+            print(f'price changed more than 1% for last: {PERIOD_HOUR}')
         await asyncio.sleep(SLEEP_1HOUR)
         cur_serv_time = cur_serv_time + timedelta(hours=1)
 
 
-async def corel_1m(client: AsyncClient):
+async def price_movement_change_1hour(client: AsyncClient):
+    """
+    Analyzing the price change for the previous hour.
+    Using the minimum and maximum values.
+    """
+    g = await client.get_server_time()
+    cur_serv_time = (
+        datetime.utcfromtimestamp(
+            g.get('serverTime') / 1000) - timedelta(hours=1)
+        )
+    while True:
+        btc = await client.get_historical_klines(
+            symbol=BTC,
+            interval=client.KLINE_INTERVAL_1HOUR,
+            start_str=cur_serv_time.strftime('%Y-%m-%d %H:%M:%S')
+            )
+        mini_maxi_btc = [float(elem) for elem in btc[0][2:4]]
+        eth = await client.get_historical_klines(
+            symbol=ETH,
+            interval=client.KLINE_INTERVAL_1HOUR,
+            start_str=cur_serv_time.strftime('%Y-%m-%d %H:%M:%S')
+            )
+        mini_maxi_eth = [float(elem) for elem in eth[0][2:4]]
+        result = await percent_and_corel(
+            eth=mini_maxi_eth,
+            btc=mini_maxi_btc,
+            period=PERIOD_HOUR
+            )
+        if result:
+            print(f'price changed more than 1% for last: {PERIOD_HOUR}')
+        await asyncio.sleep(SLEEP_1HOUR)
+        cur_serv_time = cur_serv_time + timedelta(hours=1)
+
+
+async def price_movement_change_1min(client: AsyncClient):
     """
     Analyzing the price change for the previous 1 minute.
     Using the open value and close value.
@@ -136,33 +169,26 @@ async def corel_1m(client: AsyncClient):
         datetime.utcfromtimestamp(
             g.get('serverTime') / 1000) - timedelta(minutes=1)
         )
-  
     while True:
         btc = await client.get_historical_klines(
-            'BTCUSDT',
-            client.KLINE_INTERVAL_1MINUTE,
+            symbol=BTC,
+            interval=client.KLINE_INTERVAL_1MINUTE,
             start_str=cur_serv_time.strftime('%Y-%m-%d %H:%M:%S')
             )
         open_close_btc = [float(elem) for elem in btc[0][1:5:3]]
-        # BTC [28183.62, 28178.15]
-        
-        # open_close_btc = [elem for elem in btc]
-        # BTC [[1680637920000, '28196.29000000', '28196.30000000', '28182.26000000', '28184.67000000', '41.65650000', 1680637979999, '1174152.52776840', 475, '20.67055000', '582597.87995640', '0']]
-
         eth = await client.get_historical_klines(
-            'ETHUSDT',
-            client.KLINE_INTERVAL_1MINUTE,
+            symbol=ETH,
+            interval=client.KLINE_INTERVAL_1MINUTE,
             start_str=cur_serv_time.strftime('%Y-%m-%d %H:%M:%S')
             )
         open_close_eth = [float(elem) for elem in eth[0][1:5:3]]
-        
         result = await percent_and_corel(
             eth=open_close_eth,
-            btc=open_close_btc
+            btc=open_close_btc,
+            period=PERIOD_MINUTE
             )
         if result:
-            print('SELF PRICE CHANGED')
-     
+            print(f'price changed more than 1% for last: {PERIOD_MINUTE}')
         await asyncio.sleep(SLEEP_1MINUTE)
         cur_serv_time = cur_serv_time + timedelta(minutes=1)
 
@@ -170,19 +196,18 @@ async def corel_1m(client: AsyncClient):
 async def main():
     client = await AsyncClient.create()
 
-    task_infinity_price = asyncio.Task(start_current_price(client))
-    # task_corel_1hour = asyncio.Task(correlation_1hour(client))
-    # task_corel_1m = asyncio.Task(corel_1m(client))
-    await asyncio.sleep(60)  # TIME SCRIPT
+    # task_infinity_price = asyncio.Task(start_current_price(client))
+    task_corel_1hour = asyncio.Task(price_movement_change_1hour(client))
+    # task_corel_1m = asyncio.Task(price_movement_change_1min(client))
+    task_full_analyz = asyncio.Task(analyzing_correlation_1hour(client))
+    await asyncio.sleep(30)  # TIME SCRIPT
 
     await client.close_connection()
-    task_infinity_price.cancel()
-
-    # task_corel_1hour.cancel()    
+    
+    task_full_analyz.cancel()
+    # task_infinity_price.cancel()
+    task_corel_1hour.cancel()
     # task_corel_1m.cancel()
-
-    # with suppress(asyncio.CancelledError):
-    #     # await task  # await for task cancellation
 
 
 if __name__ == '__main__':
